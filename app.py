@@ -1,4 +1,4 @@
-from flask import Flask, request, send_from_directory, session, redirect, url_for, render_template
+from flask import Flask, request, send_from_directory, session, redirect, url_for, render_template, Request
 # from werkzeug.utils import secure_filename
 from urllib.parse import quote
 from werkzeug.security import check_password_hash
@@ -9,7 +9,20 @@ import shutil
 import json
 import time
 
+class RealIPMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    def __call__(self, environ, start_response):
+        real_ip = environ.get('HTTP_CF_CONNECTING_IP')
+        
+        if real_ip:# 强行覆盖原始环境中的远程地址属性
+            environ['REMOTE_ADDR'] = real_ip
+            
+        return self.app(environ, start_response)
+
 app = Flask(__name__)
+app.wsgi_app = RealIPMiddleware(app.wsgi_app)
 
 def load_config(): # 获取 config.json 的数据
     with open('config.json', 'r', encoding='utf-8') as f:
@@ -286,6 +299,11 @@ def delete(subpath):
     except Exception as e:
         return f"删除失败: {str(e)}", 500
 
+
+@app.errorhandler(404)
+def page_not_found(e):
+    log_request("404_NOT_FOUND", f"访问了不存在的路径: {request.path}")
+    return "404NotFound", 404
 
 @app.errorhandler(413)
 def request_entity_too_large(error):
