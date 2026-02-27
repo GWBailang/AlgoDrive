@@ -38,6 +38,8 @@
 
 ### 1. 克隆与环境初始化
 
+在某些新版本 Ubuntu 中，需要使用 `venv` 虚拟环境。
+
 ```bash
 git clone https://github.com/your_name/AlgoDrive.git
 cd AlgoDrive
