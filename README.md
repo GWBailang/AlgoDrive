@@ -39,8 +39,8 @@
 ### 1. 克隆与环境初始化
 
 ```bash
-git clone https://github.com/your-username/G-AlgoDrive.git
-cd G-AlgoDrive
+git clone https://github.com/your_name/AlgoDrive.git
+cd AlgoDrive
 python3 -m venv .venv
 source .venv/bin/activate
 pip install flask
