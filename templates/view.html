@@ -3,6 +3,126 @@
 {% block title %}目录: /{{ subpath }}{% endblock %}
 
 {% block content %}
+    <script>
+        async function startUpload() {
+            const fileInput = document.getElementById('file-input');
+            const progressBar = document.getElementById('progress-bar');
+            const statusText = document.getElementById('status-text');
+            const section = document.getElementById('upload-section');
+
+            const file = fileInput.files[0];
+            if (!file){
+                alert("未选择文件");
+                return;
+            }
+
+            const CHUNK_SIZE = Number(section.dataset.chunkSize);
+            const MAX_CHUNKS = Number(section.dataset.maxChunks);
+            const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+            const uploadId = Date.now().toString(); // 时间戳作为唯一上传 ID
+            const MAX_CONCURRENCY = 5;
+
+            if (totalChunks > MAX_CHUNKS) {
+                alert("文件过大");
+                return;
+            }
+
+            let uploadedCount = 0;
+            const taskQueue = Array.from({length: totalChunks}, (_, i) => i);
+
+            statusText.innerText = `开始分段上传，段数: ${totalChunks}`;
+
+            async function uploadWorker() {
+                while (taskQueue.length > 0) {
+                    const i = taskQueue.shift();
+                    
+                    let start = i * CHUNK_SIZE;
+                    let end = Math.min(file.size, start + CHUNK_SIZE);
+                    let chunk = file.slice(start, end);
+
+                    let formData = new FormData();
+                    formData.append('file_chunk', chunk); // 文件内容
+                    formData.append('index', i); // 第几段
+                    formData.append('upload_id', uploadId); // ID
+                    formData.append('filename', file.name); // 文件名
+
+                    try {
+                        let response = await fetch('/upload_chunk', {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        if (!response.ok) throw new Error("分段上传失败");
+
+                        uploadedCount++;
+
+                        let progress = Math.round((uploadedCount / totalChunks) * 100);
+                        progressBar.style.width = progress + '%';
+                        statusText.innerText = `上传进度: ${progress}(${uploadedCount}/${totalChunks})`;
+
+                    } catch (error) {
+                        //statusText.innerText = "UPLOAD_ERROR: " + error.message;
+                        taskQueue.push(i);
+                        return;
+                    }
+                }
+            }
+
+            const workers = Array(MAX_CONCURRENCY).fill(null).map(() => uploadWorker());
+            await Promise.all(workers);
+
+            // for (let i = 0; i < totalChunks; i++) {
+            //     let start = i * CHUNK_SIZE;
+            //     let end = Math.min(file.size, start + CHUNK_SIZE);
+
+            //     let chunk = file.slice(start, end);
+
+            //     let formData = new FormData();
+            //     formData.append('file_chunk', chunk); // 文件内容
+            //     formData.append('index', i); // 第几段
+            //     formData.append('upload_id', uploadId); // ID
+            //     formData.append('filename', file.name); // 文件名
+
+            //     try {
+            //         let response = await fetch('/upload_chunk', {
+            //             method: 'POST',
+            //             body: formData
+            //         });
+
+            //         if (!response.ok) throw new Error("分段上传失败");
+
+            //         let progress = Math.round(((i + 1) / totalChunks) * 100);
+            //         progressBar.style.width = progress + '%';
+            //         statusText.innerText = `正在上传第 ${i + 1}/${totalChunks} 段`;
+
+            //     } catch (error) {
+            //         statusText.innerText = "UPLOAD_ERROR: " + error.message;
+            //         return;
+            //     }
+            // }
+
+            statusText.innerText = "分段上传完成，正在合并文件";
+
+            let mergeResponse = await fetch('/merge_chunks', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    upload_id: uploadId,
+                    filename: file.name,
+                    total_chunks: totalChunks,
+                    subpath: "{{ subpath }}"
+                })
+            });
+
+            if (mergeResponse.ok) {
+                statusText.innerText = "上传成功，页面即将刷新";
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                statusText.innerText = "上传失败，请检查服务器";
+            }
+        }
+    </script>
+
     <div class="header">
         <h3>当前位置: /{{ subpath }}</h3>
         <a href="/logout/" class="logout">Logout</a>
@@ -13,6 +133,17 @@
         <input type="file" name="the_file">
         <input type="submit" value="上传">
     </form>
+
+    <br>
+
+    <div id="upload-section" data-chunk-size="{{ chunk_size }}" data-max-chunks="{{ max_total_chunks }}">
+        <input type="file" id="file-input">
+        <button onclick="startUpload()">分段上传</button>
+        <div style="width: 100%; border: 1px solid #ccc; margin-top: 10px;">
+            <div id="progress-bar" style="width: 0%; height: 20px; background-color: #4CAF50;"></div>
+        </div>
+        <p id="status-text"></p>
+    </div>
 
     <form action="/mkdir/{{ subpath }}" method="post">
         <input type="text" name="dir" placeholder="foldername" required>

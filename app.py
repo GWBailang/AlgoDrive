@@ -32,10 +32,15 @@ CONFIG = load_config()
 
 app.config['MAX_CONTENT_LENGTH']= CONFIG['MAX_CONTENT_LENTH_MB'] * 1024 * 1024
 # 由于 Cloudflared 的限制实际可能只能上传 100MB
+CHUNK_SIZE = CONFIG['CHUNK_SIZE_MB'] * 1024 * 1024
+MAX_TOTAL_CHUNKS = CONFIG['MAX_CONTENT_LENTH_MB'] // CONFIG['CHUNK_SIZE_MB']
+CLEAUP_S = CONFIG.get('TEMP_CLEANUP_HOURS', 24) * 3600
 app.secret_key = CONFIG['SECRET_KEY']
-STORAGE_DIR = CONFIG['STORAGE_DIR'] # 存储网盘文件的文件夹
+STORAGE_DIR = CONFIG.get('STORAGE_DIR', 'files') # 存储网盘文件的文件夹
 USER_DB = CONFIG['USER'] # 账号
 LOGIN_CD = CONFIG['LOGIN_CD_S']
+
+TEMP_DIR = "temp"
 
 
 def log_request(action, detail=f""): # 显示真实 ip 的日志
@@ -62,8 +67,17 @@ def clean_filename(name): # 过滤非法字符(替换为`_`)
     
     return cleaned[:150]
 
-def is_save_path(path):
-    return os.path.abspath(path).startswith(os.path.abspath(STORAGE_DIR))
+def is_save_path(path, base_dir):
+    return os.path.abspath(path).startswith(os.path.abspath(base_dir))
+
+def clean_temp_dir():# 清理临时上传文件
+    now = time.time()
+    if not os.path.exists(TEMP_DIR): return
+    for d in os.listdir(TEMP_DIR):
+        d_path = os.path.join(TEMP_DIR, d)
+        if os.path.getmtime(d_path) < now - 86400:
+            shutil.rmtree(d_path)
+            print(f"Cleanup: Deleted expired upload {d}")
 
 @app.route('/ip/') # 测试 IP
 def ip():
@@ -126,9 +140,7 @@ def view(subpath=''):
 
     real_path = os.path.join(STORAGE_DIR, subpath)
 
-    # if not os.path.abspath(real_path).startswith(os.path.abspath(STORAGE_DIR)):
-    #     return "非法路径", 403
-    if not is_save_path(real_path):
+    if not is_save_path(real_path, STORAGE_DIR):
         return "非法路径", 403
 
     if os.path.isfile(real_path):
@@ -141,11 +153,6 @@ def view(subpath=''):
         visible_files.sort()
         items_data = []
 
-        # if subpath != "":
-        #     parent_dir = os.path.dirname(subpath)
-        #     back_url = url_for('view', subpath=parent_dir) if parent_dir else url_for('view')
-        #     file_links += f'<li>🔙<a href="{back_url}">/..</a></li>'
-
         for f in visible_files:
             item_path = os.path.join(real_path, f)
             url_path = quote(os.path.join(subpath, f))
@@ -157,46 +164,14 @@ def view(subpath=''):
                 "icon": "📁" if is_dir else "📄"
             })
 
-            # if os.path.isdir(item_real_path):
-            #     icon = "📁"
-            #     display_name = f + '/'
-            # else:
-            #     icon = "📄"
-            #     display_name = f
-            
-            # delete_link = f'''<a href="/delete/{os.path.join(subpath, f)}"
-            #                      class="del-btn"
-            #                      onclick="return confirm('确定永久删除 {f} 吗?')">
-            #                      [delete]
-            #                   </a>'''
-
-            # new_path = os.path.join(subpath, f)
-            # save_path = quote(new_path)
-            # file_links += f'<li>{icon}<a href="/view/{save_path}">{display_name}</a>{delete_link}</li>'
-
         parent_path = os.path.dirname(subpath)
 
-        # upload_url = url_for('upload', subpath=subpath)
-        # mkdir_url = url_for('mkdir', subpath=subpath)
-        # return f'''
-        #     <link rel="stylesheet" href="/static/style.css">
-        #     <h3>当前位置: /{subpath}</h3>
-        #     <a href="/logout/">logout</a>
-        #     <br><br>
-        #     <form action="{upload_url}" method="post" enctype="multipart/form-data">
-        #         <input type="file" name="the_file">
-        #         <input type="submit" value="上传">
-        #     </form>
-        #     <form action="{mkdir_url}" method="post">
-        #         <input type="text" name="dir" required>
-        #         <input type="submit" value="创建文件夹">
-        #     </form>
-        #     <ul>{file_links}</ul>
-        # '''
         return render_template('view.html',
                                subpath=subpath,
                                parent_path=parent_path,
-                               items=items_data)
+                               items=items_data,
+                               chunk_size=CHUNK_SIZE,
+                               max_total_chunks=MAX_TOTAL_CHUNKS)
     return "路径不存在", 403
 
 @app.route('/mkdir/', methods=['POST'])
@@ -213,9 +188,7 @@ def mkdir(subpath=''):
 
     folder_name = clean_filename(folder_name)
     real_dir = os.path.join(STORAGE_DIR, subpath, folder_name)
-    # if not os.path.abspath(real_dir).startswith(os.path.abspath(STORAGE_DIR)):
-    #     return "非法路径", 403
-    if not is_save_path(real_dir):
+    if not is_save_path(real_dir, STORAGE_DIR):
         return "非法路径", 403
 
     if os.path.exists(real_dir):
@@ -235,9 +208,7 @@ def upload(subpath=''):
 
     real_dir = os.path.join(STORAGE_DIR, subpath)
 
-    # if not os.path.abspath(real_dir).startswith(os.path.abspath(STORAGE_DIR)):
-    #     return "非法路径", 403
-    if not is_save_path(real_dir):
+    if not is_save_path(real_dir, STORAGE_DIR):
         return "非法路径", 403
     if not os.path.exists(real_dir):
         os.makedirs(real_dir)
@@ -249,14 +220,114 @@ def upload(subpath=''):
     filename = clean_filename(file.filename)
     if file:
         save_path = os.path.join(real_dir, filename)
-        # if not os.path.abspath(real_dir).startswith(os.path.abspath(STORAGE_DIR)):
-        #     return "非法路径", 403
-        if not is_save_path(real_dir):
+        if not is_save_path(real_dir, STORAGE_DIR):
             return "非法路径", 403
         file.save(save_path)
         log_request("UPLOAD", f"save_path: {save_path}")
         return redirect(url_for('view', subpath=subpath))
     return "未选择文件", 400
+
+@app.route('/upload_chunk', methods=['POST'])
+def upload_chunk():
+    if not session.get('logged_in'):
+        return "未登录", 401
+
+    total_chunks = int(request.form.get('total_chunks', 0))
+    if total_chunks * CHUNK_SIZE > CONFIG['MAX_CONTENT_LENTH_MB'] * 1024 * 1024:
+        return "文件总大小超出限制", 413
+
+    file_chunk = request.files.get('file_chunk') # 段
+    index = request.form.get('index') # 第几段
+    upload_id = request.form.get('upload_id') # 任务唯一 ID
+
+    if not file_chunk or not upload_id or not index:
+        return "缺少参数", 400
+    
+    if not re.match(r'^[a-zA-Z0-9_-]+$', upload_id):
+        return "非法的上传 ID", 400
+
+    file_chunk.seek(0, os.SEEK_END)
+    actual_size = file_chunk.tell()
+    file_chunk.seek(0)
+
+    if actual_size == 0:
+        return "检测到空段", 400
+
+    temp_dir = os.path.join(TEMP_DIR, upload_id)
+    if os.path.exists(temp_dir):
+        existing_chunks_count = len(os.listdir(temp_dir))
+        if existing_chunks_count >= MAX_TOTAL_CHUNKS:
+            return "上传段数过多，拒绝接收", 403
+
+    temp_dir = os.path.join(TEMP_DIR, upload_id)
+
+    if not is_save_path(temp_dir, TEMP_DIR):
+        return "非法路径", 403
+    
+    os.makedirs(temp_dir, exist_ok=True)
+
+    chunk_path = os.path.join(temp_dir, str(index))
+    file_chunk.save(chunk_path)
+
+    return "保存成功", 200
+
+@app.route('/merge_chunks', methods=['POST'])
+def merge_chunks():
+    if not session.get('logged_in'):
+        return "未登录", 401
+    
+    # data = request.json
+    data = request.get_json(force=True)
+    if not data:
+        return "无效的 JSON 数据", 400
+
+    upload_id = data.get('upload_id')
+    filename = clean_filename(data.get('filename'))
+    total_chunks = int(data.get('total_chunks'))
+    subpath = data.get('subpath', '')
+
+    temp_dir = os.path.join(TEMP_DIR, upload_id)
+    final_dir = os.path.join(STORAGE_DIR, subpath)
+    final_path = os.path.join(final_dir, filename)
+
+    total_chunks = int(data.get('total_chunks', 0))
+
+    if total_chunks > MAX_TOTAL_CHUNKS:
+        return "段数过多", 400
+    
+    actual_chunks = os.listdir(temp_dir)
+    if len(actual_chunks) != total_chunks:
+        return "碎片数量不匹配", 400
+
+    if not is_save_path(temp_dir, TEMP_DIR):
+        return "非法的临时路径", 403
+    if not is_save_path(final_path, STORAGE_DIR):
+        return "非法路径", 403
+    
+    if not os.path.exists(temp_dir):
+        return "找不到临时上传目录", 400
+    
+    try:
+        os.makedirs(final_dir, exist_ok=True)
+
+        with open(final_path, 'wb') as target_file:
+            for i in range(total_chunks):
+                chunk_path = os.path.join(temp_dir, str(i))
+                if not os.path.exists(chunk_path):
+                    return f"碎片 {i} 缺失，合并失败", 400
+                
+                with open(chunk_path, 'rb') as source_file:
+                    shutil.copyfileobj(source_file, target_file)
+
+                os.remove(chunk_path)
+        
+        os.rmdir(temp_dir)
+        log_request("MERGE_SUCCESS", f"file: {filename}")
+        return "合并成功", 200
+    
+    except Exception as e:
+        log_request("MERGE_FAILED", str(e))
+        return f"合并出错: {str(e)}", 500
 
 @app.route('/download/<path:subpath>')
 def download(subpath):
@@ -281,7 +352,7 @@ def delete(subpath):
     
     real_path = os.path.join(STORAGE_DIR,subpath)
 
-    if not is_save_path(real_path):
+    if not is_save_path(real_path, STORAGE_DIR):
         return "非法路径", 403
     
     try:
@@ -309,9 +380,9 @@ def page_not_found(e):
 def request_entity_too_large(error):
     return "文件过大(最大上传 1GB, 由于 Cloudflared 的限制实际可能只能上传 100MB)", 413
 
-if not os.path.exists(STORAGE_DIR): # 如果存储文件夹不存在，则创建
-    os.makedirs(STORAGE_DIR)
-    log_request("MKDIR", f"dir: {STORAGE_DIR}")
+
+os.makedirs(STORAGE_DIR, exist_ok=True)
+os.makedirs(TEMP_DIR, exist_ok=True)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)

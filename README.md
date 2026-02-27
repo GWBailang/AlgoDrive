@@ -4,44 +4,43 @@
 
 # AlgoDrive
 
-**AlgoDrive** 是一个为个人打造的、轻量级且高度安全的“家里云”文件管理系统。它抛弃了过度封装的复杂架构，采用算法竞赛风格的开发范式，追求极致的逻辑清晰度与单文件可移植性。
+**AlgoDrive** 是一个为开发者（特别是算法竞赛选手）设计的轻量级、高性能、单文件架构的“家里云”文件存储系统。它通过分段上传技术打破了 Cloudflare Tunnel 免费版 100MB 的上传枷锁。
 
 > [!CAUTION]
 > **WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.**
 
 ---
 
-## 项目亮点 (Why AlgoDrive?)
+## 核心特性 (Features)
 
-* **CP-Style Monolith Architecture**: 核心逻辑 100% 集中于单个 Python 文件。没有冗余的目录跳转，代码逻辑一览无余，符合算法竞赛选手的阅读与调试习惯，实现 $O(1)$ 级别的维护成本。
-* **Cloudflare Optimized**: 原生支持 Cloudflare Tunnel 穿透，自动解析 `CF-Connecting-IP` 头部，精准记录访客真实 IP。
-* **Security-First Design**:
-* 采用 `PBKDF2/Scrypt` 强哈希算法存储凭证，拒绝明文存储。
-* 内置 **IP 登录冷却机制**，有效抵御暴力破解攻击。
-* 严密的 **Path Sanitization** 逻辑，彻底封死 `../` 路径穿透漏洞。
+* **$O(1)$ 内存分段上传**: 采用前端 `Blob.slice()` 切片与后端 `shutil.copyfileobj` 流式合并，无论上传 10GB 还是 100GB，服务器内存占用始终保持平稳。
+* **物理隔离架构**: `files/`（存储区）与 `temp/`（临时区）在物理路径上彻底隔离，从根源上杜绝了临时碎片在前端暴露的风险。
+* **硬核路径保护**: 内置递归 `is_safe_path` 校验，配合 `os.path.abspath` 指纹比对，无惧任何 `../` 路径穿透攻击。
+* **算法选手友好 (CP-Style)**:
+* **Single-File Monolith**: 核心后端逻辑全部集中在 `app.py`，逻辑链条一览无余。
+* **Config-Driven**: 所有的常量（如分段大小、清理时限、登录冷却）均由 `config.json` 统一管理。
 
 
-* **UI 100% 自定义**: 逻辑与表现层通过 Jinja2 模板解耦，支持通过外部 `style.css` 快速换肤。
+* **Cloudflare 深度集成**: 内置 WSGI 中件间，自动拦截并解析 `CF-Connecting-IP`，让系统日志真实记录每一条访问者的真实 IP。
 
 ---
 
 ## 技术规格
 
-* **Backend**: Python 3.12+ / Flask
-* **Security**: Werkzeug Security Utils (Hash & Check)
-* **Template**: Jinja2 Template Engine
-* **Config**: Standard JSON Configuration
+* **后端**: Python 3.12+ / Flask
+* **前端**: 原生 JavaScript (Async/Await) + HTML5 `dataset` 通讯
+* **安全**: PBKDF2/Scrypt 密码哈希 + 针对 IP 的频率限制 (Cooldown)
 
 ---
 
-## 快速部署
+## 快速开始
 
-### 1. 克隆与环境初始化
+### 1. 环境初始化
 
-在某些新版本 Ubuntu 中，需要使用 `venv` 虚拟环境。
+新版本 Ubuntu 需要安装 venv 虚拟环境。
 
 ```bash
-git clone https://github.com/your_name/AlgoDrive.git
+git clone https://github.com/你的用户名/AlgoDrive.git
 cd AlgoDrive
 python3 -m venv .venv
 source .venv/bin/activate
@@ -51,17 +50,19 @@ pip install flask
 
 ### 2. 配置 `config.json`
 
-请根据 `config.json.example` 创建你的配置文件：
+将 `config.json.example` 重命名为 `config.json` 并填写你的配置：
 
 ```json
 {
-    "MAX_CONTENT_LENGTH_MB": 1024,
-    "SECRET_KEY": "RANDOM_STRING_HERE",
+    "MAX_CONTENT_LENTH_MB": 1024,
+    "CHUNK_SIZE_MB": 10,
+    "TEMP_CLEANUP_HOURS": 24,
+    "SECRET_KEY": "replace-this-with-a-very-long-random-string",
     "STORAGE_DIR": "files",
-    "LOGIN_CD_S": 2,
+    "LOGIN_CD_S": 3,
     "USER": {
         "username": "admin",
-        "password_hash": "YOUR_HASHED_PASSWORD"
+        "password_hash": "paste_your_generated_hash_here"
     }
 }
 
@@ -76,18 +77,32 @@ python3 app.py
 
 ---
 
-## 安全提示
+## 项目结构
 
-本项目默认运行在 Flask 内置的开发服务器上。若需在公网环境长期稳定运行，建议使用 `gunicorn` 或 `uWSGI` 进行包装：
-
-```bash
-pip install gunicorn
-gunicorn -w 4 -b 0.0.0.0:8080 app:app
+```text
+AlgoDrive/
+├── app.py              # 核心单体应用 (Back-end)
+├── config.json         # 配置文件 (Local only)
+├── gen_hash.py         # 密码哈希生成工具
+├── files/              # 网盘文件存放区 (Auto-created)
+├── temp/               # 分段上传缓存区 (Auto-created)
+├── templates/          # Jinja2 模板
+└── static/             # CSS/Static 资源
 
 ```
 
 ---
 
-## 开源协议
+## 安全防御说明
 
-**MIT License** - 保持极简，拥抱自由。
+本项目通过三层校验保护你的数据：
+
+1. **身份校验**: 基于 Session 的状态管理。
+2. **频率校验**: `last_login_times` 字典记录 IP 失败尝试，强制 2s+ 的算法级冷却。
+3. **路径校验**: 所有的文件操作（Read/Write/Delete）均会执行 `is_safe_path` 检查，确保操作范围严格限定在 `STORAGE_DIR` 或 `TEMP_DIR` 内。
+
+---
+
+## 协议
+
+**MIT License**
