@@ -1,0 +1,10 @@
+{
+    "MAX_CONTENT_LENGTH_MB": 1024,
+    "SECRET_KEY": "replace-this-with-a-very-long-random-string",
+    "STORAGE_DIR": "files",
+    "LOGIN_CD_S": 2,
+    "USER": {
+        "username": "admin",
+        "password_hash": "paste_your_generated_hash_here"
+    }
+}

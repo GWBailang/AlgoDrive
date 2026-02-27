@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}目录: /{{ subpath }}{% endblock %}
+
+{% block content %}
+    <div class="header">
+        <h3>当前位置: /{{ subpath }}</h3>
+        <a href="/logout/" class="logout">Logout</a>
+        <br><br>
+    </div>
+
+    <form action="/upload/{{ subpath }}" method="post" enctype="multipart/form-data">
+        <input type="file" name="the_file">
+        <input type="submit" value="上传">
+    </form>
+
+    <form action="/mkdir/{{ subpath }}" method="post">
+        <input type="text" name="dir" placeholder="foldername" required>
+        <input type="submit" value="新建">
+    </form>
+
+    <ul>
+        {# 渲染“返回上一级” #}
+        {% if subpath != "" %}
+            <li><a href="/view/{{ parent_path }}">🔙 .. (返回上一级)</a></li>
+        {% endif %}
+
+        {# 遍历文件列表 #}
+        {% for item in items %}
+        <li>
+            {{ item.icon }}
+            <a href="/view/{{ item.url_path }}">{{ item.name }}</a>
+            <a href="/delete/{{ item.url_path }}" class="del-btn" 
+               onclick="return confirm('确定要删除吗？')">[删除]</a>
+        </li>
+        {% endfor %}
+    </ul>
+{% endblock %}
