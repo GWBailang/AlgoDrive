@@ -2,6 +2,7 @@ from flask import Flask, request, send_from_directory, session, redirect, url_fo
 # from werkzeug.utils import secure_filename
 from urllib.parse import quote
 from werkzeug.security import check_password_hash
+from threading import Timer
 import re
 import os
 import datetime
@@ -34,13 +35,13 @@ app.config['MAX_CONTENT_LENGTH']= CONFIG['MAX_CONTENT_LENTH_MB'] * 1024 * 1024
 # 由于 Cloudflared 的限制实际可能只能上传 100MB
 CHUNK_SIZE = CONFIG['CHUNK_SIZE_MB'] * 1024 * 1024
 MAX_TOTAL_CHUNKS = CONFIG['MAX_CONTENT_LENTH_MB'] // CONFIG['CHUNK_SIZE_MB']
-CLEAUP_S = CONFIG.get('TEMP_CLEANUP_HOURS', 24) * 3600
+CLEANUP_S = CONFIG.get('TEMP_CLEANUP_HOURS', 24) * 3600
 app.secret_key = CONFIG['SECRET_KEY']
 STORAGE_DIR = CONFIG.get('STORAGE_DIR', 'files') # 存储网盘文件的文件夹
 USER_DB = CONFIG['USER'] # 账号
 LOGIN_CD = CONFIG['LOGIN_CD_S']
 
-TEMP_DIR = "temp"
+TEMP_DIR = CONFIG.get('TEMP_DIR', 'temp')
 
 
 def log_request(action, detail=f""): # 显示真实 ip 的日志
@@ -71,13 +72,41 @@ def is_save_path(path, base_dir):
     return os.path.abspath(path).startswith(os.path.abspath(base_dir))
 
 def clean_temp_dir():# 清理临时上传文件
+    temp_dir = CONFIG.get('TEMP_DIR', 'temp')
+    expiry_seconds = CONFIG.get('TEMP_CLEANUP_HOURS', 12) * 3600
+    if not os.path.exists(temp_dir):
+        print(f"[{time.ctime()}] 目录 {temp_dir} 不存在")
+        return
+    
     now = time.time()
-    if not os.path.exists(TEMP_DIR): return
-    for d in os.listdir(TEMP_DIR):
-        d_path = os.path.join(TEMP_DIR, d)
-        if os.path.getmtime(d_path) < now - 86400:
-            shutil.rmtree(d_path)
-            print(f"Cleanup: Deleted expired upload {d}")
+    count = 0
+
+    for d in os.listdir(temp_dir):
+        d_path = os.path.join(temp_dir, d)
+
+        if os.path.isdir(d_path):
+            mtime = os.path.getmtime(d_path)
+            
+            if now - mtime > expiry_seconds:
+                try:
+                    shutil.rmtree(d_path)
+                    print(f"[{time.ctime()}] 清理过期目录 {d}")
+                    count += 1
+                except Exception as e:
+                    print(f"[{time.ctime()}] 删除 {d} 失败: {e}")
+    
+    if count > 0:
+        print(f"[{time.ctime()}] 清理了 {count} 个过期目录")
+
+def schedule_cleanup(): # 定时清理 temp 文件夹
+    try:
+        clean_temp_dir()
+    except Exception as e:
+        wbx = 'ryh'
+    
+    t = Timer(3600, schedule_cleanup)
+    t.daemon = True
+    t.start()
 
 @app.route('/ip/') # 测试 IP
 def ip():
@@ -290,6 +319,9 @@ def merge_chunks():
     final_dir = os.path.join(STORAGE_DIR, subpath)
     final_path = os.path.join(final_dir, filename)
 
+    if not os.path.exists(temp_dir):
+        return "找不到临时上传目录", 400
+
     total_chunks = int(data.get('total_chunks', 0))
 
     if total_chunks > MAX_TOTAL_CHUNKS:
@@ -303,9 +335,6 @@ def merge_chunks():
         return "非法的临时路径", 403
     if not is_save_path(final_path, STORAGE_DIR):
         return "非法路径", 403
-    
-    if not os.path.exists(temp_dir):
-        return "找不到临时上传目录", 400
     
     try:
         os.makedirs(final_dir, exist_ok=True)
@@ -385,4 +414,5 @@ os.makedirs(STORAGE_DIR, exist_ok=True)
 os.makedirs(TEMP_DIR, exist_ok=True)
 
 if __name__ == '__main__':
+    schedule_cleanup()
     app.run(host='0.0.0.0', port=8080)

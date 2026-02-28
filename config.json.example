@@ -4,6 +4,7 @@
     "TEMP_CLEANUP_HOURS": 24,
     "SECRET_KEY": "replace-this-with-a-very-long-random-string",
     "STORAGE_DIR": "files",
+    "TEMP_DIR": "temp",
     "LOGIN_CD_S": 3,
     "USER": {
         "username": "admin",
