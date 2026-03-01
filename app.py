@@ -311,30 +311,48 @@ def merge_chunks():
         return "无效的 JSON 数据", 400
 
     upload_id = data.get('upload_id')
-    filename = clean_filename(data.get('filename'))
-    total_chunks = int(data.get('total_chunks'))
+    filename = clean_filename(data.get('filename', 'unnamed'))
+    # total_chunks = int(data.get('total_chunks'))
+    try:
+        total_chunks = int(data.get('total_chunks', 0))
+    except ValueError:
+        return "非法的段数格式", 400
+
     subpath = data.get('subpath', '')
 
     temp_dir = os.path.join(TEMP_DIR, upload_id)
     final_dir = os.path.join(STORAGE_DIR, subpath)
     final_path = os.path.join(final_dir, filename)
 
-    if not os.path.exists(temp_dir):
-        return "找不到临时上传目录", 400
-
-    total_chunks = int(data.get('total_chunks', 0))
-
-    if total_chunks > MAX_TOTAL_CHUNKS:
-        return "段数过多", 400
-    
-    actual_chunks = os.listdir(temp_dir)
-    if len(actual_chunks) != total_chunks:
-        return "碎片数量不匹配", 400
-
     if not is_save_path(temp_dir, TEMP_DIR):
         return "非法的临时路径", 403
     if not is_save_path(final_path, STORAGE_DIR):
         return "非法路径", 403
+
+    if total_chunks == 0:
+        try:
+            os.makedirs(final_dir, exist_ok=True)
+            with open(final_path, 'wb') as f:
+                pass
+            log_request("MERGE_SUCCESS", f"empty_file: {filename}")
+            return "合并成功(空文件)", 200
+        except Exception as e:
+            return f"创建空文件失败：{str(e)}", 500
+
+    if not os.path.exists(temp_dir):
+        log_request("MERGE_ERROR", f"Missing temp_dir for {upload_id}")
+        return "找不到临时上传目录", 400
+
+    # total_chunks = int(data.get('total_chunks', 0))
+    try:
+        actual_chunks = os.listdir(temp_dir)
+        if len(actual_chunks) != total_chunks:
+            return f"碎片数量不匹配：期待 {total_chunks}，实际 {len(actual_chunks)}", 400
+    except Exception as e:
+        return f"读取碎片列表失败：{str(e)}", 500
+
+    if total_chunks > MAX_TOTAL_CHUNKS:
+        return "段数过多", 400
     
     try:
         os.makedirs(final_dir, exist_ok=True)
