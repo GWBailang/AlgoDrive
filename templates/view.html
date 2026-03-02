@@ -4,6 +4,14 @@
 
 {% block content %}
     <script>
+        function cleanFilename(name) {
+            const pattern = /[^\u4e00-\u9fa5a-zA-Z0-9\._\-\[\]\(\)]/g;
+            let cleaned = name.replace(pattern, '_');
+            if (!cleaned || cleaned === '.' || cleaned === '..') {
+                cleaned = "unnamed_item";
+            }
+            return cleaned.substring(0, 150)
+        }
         async function startUpload() {
             const fileInput = document.getElementById('file-input');
             const progressBar = document.getElementById('progress-bar');
@@ -15,6 +23,7 @@
                 alert("未选择文件");
                 return;
             }
+            const fileName = cleanFilename(file.name);
 
             const CHUNK_SIZE = Number(section.dataset.chunkSize);
             const MAX_CHUNKS = Number(section.dataset.maxChunks);
@@ -47,7 +56,7 @@
                     formData.append('file_chunk', chunk); // 文件内容
                     formData.append('index', i); // 第几段
                     formData.append('upload_id', uploadId); // ID
-                    formData.append('filename', file.name); // 文件名
+                    formData.append('filename', fileName); // 文件名
 
                     try {
                         let response = await fetch('/upload_chunk', {
@@ -90,7 +99,7 @@
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     upload_id: uploadId,
-                    filename: file.name,
+                    filename: fileName,
                     total_chunks: totalChunks,
                     subpath: "{{ subpath }}"
                 })
