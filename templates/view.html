@@ -20,7 +20,7 @@
             const MAX_CHUNKS = Number(section.dataset.maxChunks);
             const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
             const uploadId = Date.now().toString(); // 时间戳作为唯一上传 ID
-            const MAX_CONCURRENCY = 5;
+            const MAX_CONCURRENCY = 8;
 
             if (totalChunks > MAX_CHUNKS) {
                 alert("文件过大");
@@ -29,11 +29,14 @@
 
             let uploadedCount = 0;
             const taskQueue = Array.from({length: totalChunks}, (_, i) => i);
+            let uploadError = null;
+            let errorCount = 0;
 
             statusText.innerText = `开始分段上传，段数: ${totalChunks}`;
 
             async function uploadWorker() {
-                while (taskQueue.length > 0) {
+                while (taskQueue.length > 0 && !uploadError) {
+                    // const item = taskQueue.shift();
                     const i = taskQueue.shift();
                     
                     let start = i * CHUNK_SIZE;
@@ -52,18 +55,22 @@
                             body: formData
                         });
 
-                        if (!response.ok) throw new Error("分段上传失败");
+                        if (!response.ok)throw new Error("分段上传失败");
 
                         uploadedCount++;
 
                         let progress = Math.round((uploadedCount / totalChunks) * 100);
                         progressBar.style.width = progress + '%';
-                        statusText.innerText = `上传进度: ${progress}(${uploadedCount}/${totalChunks})`;
+                        statusText.innerText = `上传进度: ${progress}%(${uploadedCount}/${totalChunks})`;
 
                     } catch (error) {
-                        //statusText.innerText = "UPLOAD_ERROR: " + error.message;
-                        taskQueue.push(i);
-                        return;
+                        if (errorCount < 5) {
+                            errorCount++;
+                            taskQueue.push(i);
+                        } else {
+                            uploadError = error;
+                            return;
+                        }
                     }
                 }
             }
@@ -71,35 +78,10 @@
             const workers = Array(MAX_CONCURRENCY).fill(null).map(() => uploadWorker());
             await Promise.all(workers);
 
-            // for (let i = 0; i < totalChunks; i++) {
-            //     let start = i * CHUNK_SIZE;
-            //     let end = Math.min(file.size, start + CHUNK_SIZE);
-
-            //     let chunk = file.slice(start, end);
-
-            //     let formData = new FormData();
-            //     formData.append('file_chunk', chunk); // 文件内容
-            //     formData.append('index', i); // 第几段
-            //     formData.append('upload_id', uploadId); // ID
-            //     formData.append('filename', file.name); // 文件名
-
-            //     try {
-            //         let response = await fetch('/upload_chunk', {
-            //             method: 'POST',
-            //             body: formData
-            //         });
-
-            //         if (!response.ok) throw new Error("分段上传失败");
-
-            //         let progress = Math.round(((i + 1) / totalChunks) * 100);
-            //         progressBar.style.width = progress + '%';
-            //         statusText.innerText = `正在上传第 ${i + 1}/${totalChunks} 段`;
-
-            //     } catch (error) {
-            //         statusText.innerText = "UPLOAD_ERROR: " + error.message;
-            //         return;
-            //     }
-            // }
+            if (uploadError) {
+                statusText.innerText = "UPLOAD_ERROR: " + uploadError;
+                return;
+            }
 
             statusText.innerText = "分段上传完成，正在合并文件";
 

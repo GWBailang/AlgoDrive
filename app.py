@@ -34,7 +34,7 @@ CONFIG = load_config()
 app.config['MAX_CONTENT_LENGTH']= CONFIG['MAX_CONTENT_LENTH_MB'] * 1024 * 1024
 # 由于 Cloudflared 的限制实际可能只能上传 100MB
 CHUNK_SIZE = CONFIG['CHUNK_SIZE_MB'] * 1024 * 1024
-MAX_TOTAL_CHUNKS = CONFIG['MAX_CONTENT_LENTH_MB'] // CONFIG['CHUNK_SIZE_MB']
+MAX_TOTAL_CHUNKS = CONFIG['MAX_CONTENT_LENTH_MB'] // CONFIG['CHUNK_SIZE_MB'] + 1
 CLEANUP_S = CONFIG.get('TEMP_CLEANUP_HOURS', 24) * 3600
 app.secret_key = CONFIG['SECRET_KEY']
 STORAGE_DIR = CONFIG.get('STORAGE_DIR', 'files') # 存储网盘文件的文件夹
@@ -273,7 +273,9 @@ def upload_chunk():
         return "缺少参数", 400
     
     if not re.match(r'^[a-zA-Z0-9_-]+$', upload_id):
-        return "非法的上传 ID", 400
+        return "非法的上传 ID", 403
+    if not re.match(r'^[0-9]+$', index):
+        return "非法的索引", 403
 
     file_chunk.seek(0, os.SEEK_END)
     actual_size = file_chunk.tell()
@@ -316,7 +318,7 @@ def merge_chunks():
     try:
         total_chunks = int(data.get('total_chunks', 0))
     except ValueError:
-        return "非法的段数格式", 400
+        return "非法的段数格式", 403
 
     subpath = data.get('subpath', '')
 
