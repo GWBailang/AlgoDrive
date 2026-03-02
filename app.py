@@ -435,4 +435,10 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 
 if __name__ == '__main__':
     schedule_cleanup()
-    app.run(host='0.0.0.0', port=8080)
+
+    allow_lan = CONFIG.get('ALLOW_LAN', False)
+    host_ip = '0.0.0.0' if allow_lan else '127.0.0.1'
+
+    port = CONFIG.get('PORT', 8080)
+
+    app.run(host=host_ip, port=port)

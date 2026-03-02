@@ -71,7 +71,8 @@ pip install flask
     "USER": {
         "username": "admin",
         "password_hash": "paste_your_generated_hash_here"
-    }
+    },
+    "PORT": 8080
 }
 
 ```
@@ -108,6 +109,15 @@ AlgoDrive/
 1. **身份校验**: 基于 Session 的状态管理。
 2. **频率校验**: `last_login_times` 字典记录 IP 失败尝试，强制 2s+ 的算法级冷却。
 3. **路径校验**: 所有的文件操作（Read/Write/Delete）均会执行 `is_safe_path` 检查，确保操作范围严格限定在 `STORAGE_DIR` 或 `TEMP_DIR` 内。
+
+---
+
+## DEBUG
+
+### 局域网内连接
+
+通过在 `config.json` 中设置 `"ALLOW_LAN": true` 使服务器运行在 `0.0.0.0:<PORT>` 上，此时可以在局域网内绕过 cf 直接访问服务器。正式部署请不要将此参数设置成 true。
+
 
 ---
 

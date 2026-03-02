@@ -9,5 +9,6 @@
     "USER": {
         "username": "admin",
         "password_hash": "paste_your_generated_hash_here"
-    }
+    },
+    "PORT": 8080
 }
