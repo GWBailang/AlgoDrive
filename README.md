@@ -4,7 +4,7 @@
 
 该项目处于测试阶段，暂时不保证安全/稳定性，欢迎 Hack。
 
-可以使用目录下的 `password_hash.py` 获取密码的 Hash，然后把输出的**全部内容**填到 `config.json` 的 `password_hask` 参数中。
+可以使用目录下的 `password_hash.py` 获取密码的 Hash，然后把输出的**全部内容**填到 `config.json` 的 `password_hash` 参数中。
 
 免责声明：以下内容 99% 的内容由 AI 编写。
 
