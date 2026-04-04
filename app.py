@@ -9,6 +9,7 @@ import datetime
 import shutil
 import json
 import time
+import secrets
 
 class RealIPMiddleware:
     def __init__(self, app):
@@ -24,6 +25,7 @@ class RealIPMiddleware:
 
 app = Flask(__name__)
 app.wsgi_app = RealIPMiddleware(app.wsgi_app)
+app.secret_key = secrets.token_hex(16)
 
 def load_config(): # 获取 config.json 的数据
     with open('config.json', 'r', encoding='utf-8') as f:
@@ -36,7 +38,6 @@ app.config['MAX_CONTENT_LENGTH']= CONFIG['MAX_CONTENT_LENTH_MB'] * 1024 * 1024
 CHUNK_SIZE = CONFIG['CHUNK_SIZE_MB'] * 1024 * 1024
 MAX_TOTAL_CHUNKS = CONFIG['MAX_CONTENT_LENTH_MB'] // CONFIG['CHUNK_SIZE_MB'] + 1
 CLEANUP_S = CONFIG.get('TEMP_CLEANUP_HOURS', 24) * 3600
-app.secret_key = CONFIG['SECRET_KEY']
 STORAGE_DIR = CONFIG.get('STORAGE_DIR', 'files') # 存储网盘文件的文件夹
 USER_DB = CONFIG['USER'] # 账号
 LOGIN_CD = CONFIG['LOGIN_CD_S']
@@ -151,7 +152,7 @@ def logout():
     if not session.get('logged_in', False):
         return "本来就没登录", 403
     log_request("LOGOUT")
-    session.pop('logged_in', None)
+    session.clear()
     return redirect(url_for('root'))
 
 @app.route('/')

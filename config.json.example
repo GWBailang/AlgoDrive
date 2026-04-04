@@ -2,7 +2,6 @@
     "MAX_CONTENT_LENTH_MB": 1024,
     "CHUNK_SIZE_MB": 10,
     "TEMP_CLEANUP_HOURS": 24,
-    "SECRET_KEY": "replace-this-with-a-very-long-random-string",
     "STORAGE_DIR": "files",
     "TEMP_DIR": "temp",
     "LOGIN_CD_S": 3,

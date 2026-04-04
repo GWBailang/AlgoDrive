@@ -47,7 +47,7 @@
 新版本 Ubuntu 需要安装 venv 虚拟环境。
 
 ```bash
-git clone https://github.com/GWBailang/AlgoDrive.git
+git clone https://github.com/你的用户名/AlgoDrive.git
 cd AlgoDrive
 python3 -m venv .venv
 source .venv/bin/activate
@@ -64,7 +64,6 @@ pip install flask
     "MAX_CONTENT_LENTH_MB": 1024,
     "CHUNK_SIZE_MB": 10,
     "TEMP_CLEANUP_HOURS": 24,
-    "SECRET_KEY": "replace-this-with-a-very-long-random-string",
     "STORAGE_DIR": "files",
     "TEMP_DIR": "temp",
     "LOGIN_CD_S": 3,
