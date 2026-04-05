@@ -47,7 +47,7 @@
 新版本 Ubuntu 需要安装 venv 虚拟环境。
 
 ```bash
-git clone https://github.com/你的用户名/AlgoDrive.git
+git clone https://github.com/GWBailang/AlgoDrive.git
 cd AlgoDrive
 python3 -m venv .venv
 source .venv/bin/activate
